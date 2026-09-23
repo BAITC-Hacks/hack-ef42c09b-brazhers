@@ -18,6 +18,7 @@ import tempfile
 import time
 from collections import defaultdict, deque
 from datetime import date, datetime
+from decimal import Decimal
 from numbers import Integral
 from pathlib import Path
 from typing import Any
@@ -536,16 +537,22 @@ def build_features(
 
     in_deg = [len(links) for links in in_adj]
     out_deg = [len(links) for links in out_adj]
-    in_kzt = [sum(amount for _, amount, _ in links) for links in in_adj]
-    out_kzt = [sum(amount for _, amount, _ in links) for links in out_adj]
+    # Sum decimal representations before division so business boundaries such as
+    # 0.70 do not move due to binary floating-point addition. Keep export types.
+    in_amounts = [sum((Decimal(str(amount)) for _, amount, _ in links), Decimal(0)) for links in in_adj]
+    out_amounts = [sum((Decimal(str(amount)) for _, amount, _ in links), Decimal(0)) for links in out_adj]
+    in_kzt = [float(amount) for amount in in_amounts]
+    out_kzt = [float(amount) for amount in out_amounts]
     in_tx = [sum(count for _, _, count in links) for links in in_adj]
     out_tx = [sum(count for _, _, count in links) for links in out_adj]
-    pr = pagerank(n, out_adj, out_kzt)
+    # Preserve the existing floating edge-weight normalization for PageRank.
+    out_strength = [sum(amount for _, amount, _ in links) for links in out_adj]
+    pr = pagerank(n, out_adj, out_strength)
     betweenness = weighted_directed_betweenness(n, out_adj)
     seed_indices = {i for i, row in enumerate(sorted_nodes) if row["is_seed"]}
     seed_reach = seed_reach_within_two_hops(n, undirected_adj, seed_indices)
     truncated = [sorted_nodes[i]["depth"] == 4 and out_deg[i] == 0 for i in range(n)]
-    pass_through = [out_kzt[i] / in_kzt[i] if in_kzt[i] > 0.0 else None for i in range(n)]
+    pass_through = [float(out_amounts[i] / in_amounts[i]) if in_amounts[i] else None for i in range(n)]
 
     pr_rank = percentile_ranks(pr)
     in_deg_rank = percentile_ranks([float(x) for x in in_deg])
@@ -681,10 +688,8 @@ def build_features(
             }
         )
     partition = louvain_partition(n, edge_idx)
-    groups: dict[int, list[int]] = defaultdict(list)
-    for i, community in enumerate(partition):
-        groups[community].append(i)
-    stable_groups = sorted(groups.values(), key=lambda group: (-len(group), min(gids[i] for i in group)))
+    groups = connected_community_groups(partition, undirected_adj)
+    stable_groups = sorted(groups, key=lambda group: (-len(group), min(gids[i] for i in group)))
     cluster_for_index = {}
     for cluster_id, group in enumerate(stable_groups):
         for i in group:
@@ -692,6 +697,31 @@ def build_features(
             result[i]["cluster_id"] = cluster_id
     cluster_rows = make_cluster_rows(stable_groups, result, cluster_for_index, edge_idx)
     return result, cluster_rows, thresholds
+
+
+def connected_community_groups(partition: list[int], undirected_adj: list[set[int]]) -> list[list[int]]:
+    """Split each Louvain community into components of its induced subgraph."""
+    communities: dict[int, list[int]] = defaultdict(list)
+    for node, community in enumerate(partition):
+        communities[community].append(node)
+    components = []
+    for members in communities.values():
+        unseen = set(members)
+        for root in members:
+            if root not in unseen:
+                continue
+            unseen.remove(root)
+            component = [root]
+            stack = [root]
+            while stack:
+                node = stack.pop()
+                for neighbor in undirected_adj[node]:
+                    if neighbor in unseen:
+                        unseen.remove(neighbor)
+                        component.append(neighbor)
+                        stack.append(neighbor)
+            components.append(sorted(component))
+    return components
 
 
 def fmt_money(value: float) -> str:

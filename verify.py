@@ -310,8 +310,10 @@ def recompute(tables: dict[str, list[dict[str, Any]]]) -> tuple[dict[int, dict[s
             features[gid][f"{field}_rank"] = value
     for f in features.values():
         f["role"], f["role_score"], f["rule"] = expected_role(f, thresholds)
-        f["priority_score"] = sum(f[f"{field}_rank"] * weight for field, weight in
-                                  (("pagerank", .30), ("in_deg", .25), ("betweenness", .25), ("out_deg", .10), ("seed_reach", .10)))
+        priority = 0.0
+        for field, weight in (("pagerank", .30), ("in_deg", .25), ("betweenness", .25), ("out_deg", .10), ("seed_reach", .10)):
+            priority += f[f"{field}_rank"] * weight
+        f["priority_score"] = priority
     summary = {"node_count": len(nodes), "edge_count": len(edges), "transaction_count": len(transactions),
                "seed_count": len(seeds), "orphan_count": sum(not incoming[g] and not outgoing[g] for g in gids),
                "seed_without_outgoing": sum(not outgoing[g] for g in seeds), "edge_turnover": float(sum(e["sum_kzt"] for e in edges))}
@@ -426,7 +428,10 @@ def verify(data_dir: Path, out_dir: Path, gid: int | None = None) -> dict[str, A
                     seen.add(v)
                     frontier.append(v)
         require(len(seen) == len(members), f"cluster {cid}: disconnected members/orphan incorrectly merged")
-    require(len(top) >= 20, "top_nodes: fewer than 20 rows")
+    if 0 < len(features) < 20:
+        require(len(top) == len(features), "top_nodes: graphs with fewer than 20 nodes must include every node")
+    else:
+        require(len(top) >= 20, "top_nodes: fewer than 20 rows")
     order = sorted(features, key=lambda g: (-features[g]["priority_score"], g))[:len(top)]
     require([integer(r["gid"], "top_nodes.gid") for r in top] == order, "top_nodes: incorrect order/coverage/duplicate gid")
     for rank, row in enumerate(top, 1):
