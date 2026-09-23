@@ -1,0 +1,35 @@
+{
+  "python_version": "3.14.0",
+  "validation": {
+    "node_count": 2248,
+    "edge_count": 3119,
+    "transaction_count": 4840,
+    "seed_count": 81,
+    "orphan_count": 19,
+    "orphan_seed_count": 19,
+    "seed_without_outgoing": 31,
+    "edge_turnover": 365890012.01,
+    "weak_component_count_including_orphans": 35,
+    "weak_component_count_with_edges": 16,
+    "max_transaction_aggregate_diff_kzt": 5.820766091346741e-11
+  },
+  "thresholds": {
+    "in_deg_p75": 1.0,
+    "in_deg_p90": 2.0,
+    "out_deg_p75": 1.0,
+    "out_deg_p90": 3.0,
+    "betweenness_p75_positive": 9.738917745675346e-05,
+    "pagerank_p75": 0.00046046328200250765
+  },
+  "role_counts": {
+    "consolidator": 88,
+    "transit": 92,
+    "distributor": 85,
+    "terminal": 1535,
+    "coordinator": 147,
+    "peripheral": 301
+  },
+  "cluster_count": 91,
+  "truncated_by_depth_count": 444,
+  "elapsed_seconds": 0.63575
+}
